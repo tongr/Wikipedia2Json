@@ -22,6 +22,10 @@
 #
 #  Modified by:
 #  Soufian Jebbara, Semantic Computing Group, Bielefeld University, Germany
+#
+#  Modified by:
+#  Sebastian Walter -> ported sourcecode to work with python 3.4 and higher
+#
 # =============================================================================
 
 # =============================================================================
@@ -46,6 +50,7 @@ import re
 import bz2
 import os.path
 import ujson
+import urllib.parse
 from multiprocessing import Pool
 
 """Wikipedia Extractor:
@@ -93,7 +98,7 @@ class AnnotatedWikiDocument(dict):
 
 def get_wiki_document_url(wiki_document_title, prefix, quote=False):
     if quote:
-        title = urllib.quote(wiki_document_title.replace(' ', '_').encode('utf-8'))
+        title = urllib.parse.quote(wiki_document_title.replace(' ', '_').encode('utf-8'))
         title = title.replace('%28', '(')
         title = title.replace('%29', ')')
         title = title.replace('%3A', ':')
@@ -227,7 +232,7 @@ class AnnotatedWikiExtractor(object):
 
         # Riconosce i tag HTML segnaposto
         self.__placeholder_tag_patterns = list()
-        for tag in self.__class__.__placeholder_tags.iterkeys():
+        for tag in self.__class__.__placeholder_tags:
             pattern = re.compile(r'<\s*%s(\s*| [^/]+?)>.*?<\s*/\s*%s\s*>' % (tag, tag), re.DOTALL | re.IGNORECASE)
             self.__placeholder_tag_patterns.append((pattern, self.__class__.__placeholder_tags[tag]))
 
@@ -338,7 +343,7 @@ class AnnotatedWikiExtractor(object):
 
         annotations = []
         for m in ms:
-            if urllib.quote("#") not in m.group(1) or self.keep_anchors:
+            if urllib.parse.quote("#") not in m.group(1) or self.keep_anchors:
                 annotations.append(
                     {"uri": m.group(1), "surface_form": m.group(2), "offset": m.start() - deltaStringLength})
 
@@ -429,7 +434,7 @@ class AnnotatedWikiExtractor(object):
 
         # Gestisce i caratteri speciali
         wiki_document.text = wiki_document.text.replace('&amp;', '&').replace('&quot;&quot;', '&quot;')
-        for entity in self.__class__.__char_entities.iterkeys():
+        for entity in self.__class__.__char_entities:
             wiki_document.text = wiki_document.text.replace(entity, self.__class__.__char_entities[entity])
 
         # Gestisce i caratteri speciali
@@ -588,7 +593,7 @@ class AnnotatedWikiExtractor(object):
     def __handle_unicode(self, entity):
         numeric_code = int(entity[2:-1])
         if numeric_code >= 0x10000: return ''
-        return unichr(numeric_code)
+        return chr(numeric_code)
 
 
 # ------------------------------------------------------------------------------
@@ -606,15 +611,19 @@ class OutputSplitter:
         self.__out_file, self.__current_filepath = self.__open_next_file()
         self.__index_file = io.open(os.path.join(path_name, "index.tsv"), "w", encoding="utf-8")
 
-    def write(self, (url, text)):
-        # print "write:", url
+    #def write(self, (url, text)):
+    def write(self, x):
+        url = x[0]
+        text =x[1]
+        print("write:", url)
+        print("write:", text)
         text_len = len(text)
         if self.__cur_file_size + text_len / 2 > self.__max_file_size:
             self.__close_cur_file()
             self.__out_file, self.__current_filepath = self.__open_next_file()
             self.__line_number = 0
             self.__cur_file_size = 0
-        self.__out_file.write(text)
+        self.__out_file.write(str(text,'utf-8'))
         self.__cur_file_size += text_len
         self.__add_to_index(url)
         self.__line_number += 1
@@ -631,7 +640,7 @@ class OutputSplitter:
         dir_name = self.__get_dir_name()
         if not os.path.isdir(dir_name):
             os.makedirs(dir_name)
-            print "Open next dir: {}".format(dir_name)
+            print("Open next dir: {}".format(dir_name))
 
         filepath = os.path.join(dir_name, self.__get_file_name())
         if self.__compress:
@@ -653,33 +662,33 @@ class OutputSplitter:
 
     def __add_to_index(self, url):
         rel_filepath = os.path.relpath(self.__current_filepath, self.__path_name)
-        self.__index_file.write(url + u"\t" + rel_filepath + u"\t" + unicode(self.__line_number) + u"\n")
+        self.__index_file.write(url + u"\t" + rel_filepath + u"\t" + str(self.__line_number) + u"\n")
 
 
 ### USER INTERFACE ############################################################
 
 def show_help():
-    print >> sys.stdout, __doc__,
+    print() >> sys.stdout, __doc__,
 
 
 def show_usage(output_file, script_name):
-    print >> output_file, 'Usage: python %s [options] < your_wikipedia_dump.xml' % script_name
+    print(output_file, 'Usage: python %s [options] < your_wikipedia_dump.xml' % script_name)
 
 
 def show_suggestion(output_file, script_name):
-    print >> output_file, 'Try \'%s --help\' for more information.' % script_name
+    print(output_file, 'Try \'%s --help\' for more information.' % script_name)
 
 
 def show_size_error(script_name, file_size):
-    print >> sys.stderr, '%s: %s: Insufficient or invalid number of bytes' % (script_name, file_size)
+    print(sys.stderr, '%s: %s: Insufficient or invalid number of bytes' % (script_name, file_size))
 
 
 def show_file_error(script_name, file_name):
-    print >> sys.stderr, '%s: %s: No such file or directory' % (script_name, file_name)
+    print(sys.stderr, '%s: %s: No such file or directory' % (script_name, file_name))
 
 
 def process_file(input_file, output_splitter, number_of_workers):
-    print "Start processing file ..."
+    print("Start processing file ...")
     # Set up pool of worker processes
     pool = Pool(processes=number_of_workers)
 
@@ -687,7 +696,7 @@ def process_file(input_file, output_splitter, number_of_workers):
     page = []
     page_counter = 0
     for line in input_file:
-        line = line.decode('utf-8').strip()
+        line = line.strip()
         if line == '<page>':
             page = []
         elif line == '</page>':
@@ -695,7 +704,7 @@ def process_file(input_file, output_splitter, number_of_workers):
             page_counter += 1
 
             if len(pages) % 10000 == 0:
-                print "Process page ", page_counter
+                print("Process page ", page_counter)
 
             if len(pages) >= 10000:
                 for x in pool.map(process_page, pages):
@@ -767,7 +776,7 @@ def main():
         elif opt in ("-p", "--prefix"):
             prefix = arg
             if prefix[-1] != "/":
-                print "Prefix '{}' does not end on '/'".format(prefix)
+                print("Prefix '{}' does not end on '/'".format(prefix))
                 sys.exit(1)
 
     if len(args) > 0:
