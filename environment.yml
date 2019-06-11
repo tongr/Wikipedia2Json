@@ -1,0 +1,6 @@
+name: wiki2json
+channels:
+  - defaults
+dependencies:
+  - ujson=1.35
+
