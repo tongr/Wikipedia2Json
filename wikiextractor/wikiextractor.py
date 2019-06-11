@@ -76,7 +76,7 @@ Options:
 ### SUPPORT CLASSES ###########################################################
 
 class AnnotatedWikiDocument(dict):
-    __slots__ = ['default', 'id', 'url', "title", 'text', 'annotations']
+    __slots__ = ['default', 'id', 'url', "title", 'text', 'annotations', 'categories']
 
     def __init__(self, default=None, **kwargs):
         super(AnnotatedWikiDocument, self).__init__(**kwargs)
@@ -86,6 +86,7 @@ class AnnotatedWikiDocument(dict):
         self.title = None
         self.text = None
         self.annotations = None
+        self.categories = set()
 
     def __str__(self):
         self["id"] = self.id
@@ -93,6 +94,7 @@ class AnnotatedWikiDocument(dict):
         self["title"] = self.title
         self["text"] = self.text
         self["annotations"] = self.annotations
+        self["categories"] = self.categories
         return ujson.dumps(self) + "\n"
 
 
@@ -398,7 +400,7 @@ class AnnotatedWikiExtractor(object):
         good_wikilink_pattern = self.__wikilink_pattern[0]
         for match in good_wikilink_pattern.finditer(wiki_document.text):
             wikilink = match.group()
-            document_title, link_text = self.__handle_wikilink(wikilink[2:-2])
+            document_title, link_text = self.__handle_wikilink(wikilink[2:-2], categories_sink=wiki_document.categories)
             wiki_document.text = wiki_document.text.replace(wikilink, self.__get_anchor_tag(document_title, link_text))
         for match in good_wikilink_pattern.finditer(wiki_document.text):
             wikilink = match.group()
@@ -408,13 +410,13 @@ class AnnotatedWikiExtractor(object):
         bad_left_wikilink_pattern = self.__wikilink_pattern[1]
         for match in bad_left_wikilink_pattern.finditer(wiki_document.text):
             wikilink = match.group()
-            document_title, link_text = self.__handle_wikilink(wikilink[1:-2])
+            document_title, link_text = self.__handle_wikilink(wikilink[1:-2], categories_sink=wiki_document.categories)
             wiki_document.text = wiki_document.text.replace(wikilink, self.__get_anchor_tag(document_title, link_text))
 
         bad_right_wikilink_pattern = self.__wikilink_pattern[2]
         for match in bad_right_wikilink_pattern.finditer(wiki_document.text):
             wikilink = match.group()
-            document_title, link_text = self.__handle_wikilink(wikilink[2:-1])
+            document_title, link_text = self.__handle_wikilink(wikilink[2:-1], categories_sink=wiki_document.categories)
             wiki_document.text = wiki_document.text.replace(wikilink, self.__get_anchor_tag(document_title, link_text))
         wiki_document.text = wiki_document.text.replace('[[', '').replace(']]', '')
 
@@ -539,7 +541,7 @@ class AnnotatedWikiExtractor(object):
         wiki_document.text = '\n'.join(page)
         return wiki_document
 
-    def __handle_wikilink(self, wikilink):
+    def __handle_wikilink(self, wikilink, categories_sink=None):
         if wikilink.startswith(":"):
             # remove redundant preceding ":"
             wikilink = wikilink[1:]
@@ -550,16 +552,20 @@ class AnnotatedWikiExtractor(object):
                 wikilink = wikilink[len(p):]
                 break
 
+        parts = wikilink.split("|")
+        wclean = parts[0].strip().lower()
+        # add categories to sink
+        if categories_sink is not None and wclean.startswith("category:"):
+            categories_sink.add(":".join(parts[0].split(":")[1:]))
+
         # filter files, categories, etc, ...
         for p in self.__garbage_link_prefixes + self.__project_namespaces:
-            wclean = wikilink.strip().lower()
             if wclean.startswith(p + ":"):
                 # ignore all garbage links
                 # ignore all "unknown"/non-english versions of garbage links by generic "wiki" prefix
                 return "", ""
 
         # only consider article title, not link text, when checking for cross language links
-        parts = wikilink.split("|")
         tokens = parts[0].split(":")
         if len(tokens) > 1 and len(tokens[0]) <= 3 and tokens[0].islower() and tokens[0].isalpha():
             # heuristic to ignore all cross language links
