@@ -615,8 +615,6 @@ class OutputSplitter:
     def write(self, x):
         url = x[0]
         text =x[1]
-        print("write:", url)
-        print("write:", text)
         text_len = len(text)
         if self.__cur_file_size + text_len / 2 > self.__max_file_size:
             self.__close_cur_file()
@@ -654,7 +652,7 @@ class OutputSplitter:
 
     def __get_dir_name(self):
         char1 = self.__dir_index % 26
-        char2 = self.__dir_index / 26 % 26
+        char2 = int(self.__dir_index / 26) % 26
         return os.path.join(self.__path_name, '%c%c' % (ord('A') + char2, ord('A') + char1))
 
     def __get_file_name(self):
