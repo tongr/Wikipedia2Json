@@ -649,7 +649,7 @@ class OutputSplitter:
         filepath = os.path.join(dir_name, self.__get_file_name())
         if self.__compress:
             filepath = filepath + '.bz2'
-            return bz2.BZ2File(filepath, 'w'), filepath
+            return bz2.open(filepath, 'wt'), filepath
         else:
             return open(filepath, 'w'), filepath
 
