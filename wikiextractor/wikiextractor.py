@@ -133,7 +133,7 @@ class AnnotatedWikiExtractor(object):
     __allowed_prefixes = ('w:', "en:")
 
     __garbage_page_prefixes = (
-        'Image:', 'Category:', 'File:', 'Wikipedia:', 'Template:', 'Portal:', 'User:', "Help:", "Book:", "Draft:",
+        'Image:', 'File:', 'Wikipedia:', 'Template:', 'Portal:', 'User:', "Help:", "Book:", "Draft:",
         "Module:", "TimedText:", "MediaWiki:")
 
     __char_entities = {'&nbsp;': u'\u00A0', '&iexcl;': u'\u00A1', '&cent;': u'\u00A2', '&pound;': u'\u00A3',
@@ -285,6 +285,8 @@ class AnnotatedWikiExtractor(object):
             else:
                 # print(f"No redirect link  found in {wiki_document.text}")
                 return None
+        elif self.__is_category_page(wiki_document):
+            data["parent_categories"] = list(get_wiki_document_url(c, self.prefix) for c in wiki_document.categories)
         else:
             data["json"] = str(wiki_document).encode('utf-8')
 
@@ -371,6 +373,9 @@ class AnnotatedWikiExtractor(object):
         wiki_document.annotations = annotations
 
         return wiki_document
+
+    def __is_category_page(self, wiki_document):
+        return wiki_document.title.lower().startswith("category:")
 
     def __is_redirect(self, wiki_document):
         return wiki_document.text.lstrip().lower().startswith("#redirect")
@@ -568,11 +573,12 @@ class AnnotatedWikiExtractor(object):
                 wikilink = wikilink[len(p):]
                 break
 
+        # split into  article title and link text
         parts = wikilink.split("|")
         wclean = parts[0].strip().lower()
         # add categories to sink
         if categories_sink is not None and wclean.startswith("category:"):
-            categories_sink.add(":".join(parts[0].split(":")[1:]))
+            categories_sink.add(parts[0])
 
         # filter files, categories, etc, ...
         for p in self.__garbage_link_prefixes + self.__project_namespaces:
@@ -586,9 +592,6 @@ class AnnotatedWikiExtractor(object):
         if len(tokens) > 1 and len(tokens[0]) <= 3 and tokens[0].islower() and tokens[0].isalpha():
             # heuristic to ignore all cross language links
             return "", ""
-
-        # split into  article title and link text
-        parts = wikilink.split("|")
 
         # tokens = parts[0].split(":")
         # if len(tokens) > 1:
@@ -632,10 +635,15 @@ class OutputSplitter:
         self.__path_name = path_name
         self.__out_file, self.__current_filepath = self.__open_next_file()
         self.__index_file = io.open(os.path.join(path_name, "index.tsv"), "w", encoding="utf-8")
+        self.__categories_file = io.open(os.path.join(path_name, "categories.tsv"), "w", encoding="utf-8")
         self.__redirects_file = io.open(os.path.join(path_name, "redirects.tsv"), "w", encoding="utf-8")
 
     #def write(self, (url, text)):
     def write(self, data):
+        if "parent_categories" in data:
+            for parent in data["parent_categories"]:
+                self.__categories_file.write(f"{data['url']}\t{parent}\n")
+            return
         if "redirect" in data:
             self.__redirects_file.write(f"{data['url']}\t{data['redirect']}\n")
             return
