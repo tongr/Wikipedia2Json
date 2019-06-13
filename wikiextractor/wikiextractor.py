@@ -276,7 +276,19 @@ class AnnotatedWikiExtractor(object):
         if wiki_document is None:
             return
 
-        return (wiki_document.url, wiki_document.__str__().encode('utf-8'))
+        data = {
+            "url": wiki_document.url
+        }
+        if self.__is_redirect(wiki_document):
+            if len(wiki_document.annotations) > 0:
+                data["redirect"] = get_wiki_document_url(wiki_document.annotations[0]['uri'], self.prefix)
+            else:
+                # print(f"No redirect link  found in {wiki_document.text}")
+                return None
+        else:
+            data["json"] = str(wiki_document).encode('utf-8')
+
+        return data
 
     def extract_raw_document(self, page, quote=False):
         wiki_document = AnnotatedWikiDocument()
@@ -302,9 +314,10 @@ class AnnotatedWikiExtractor(object):
             # Inizio del testo della pagina (nodo XML)
             elif line.startswith('<text'):
                 if line.endswith('</text>'):
-                    # Redirect page
-                    return None
-                line = line[27:]
+                    # content with only one line .. most likely a redirect page
+                    line = line[27:-7]
+                else:
+                    line = line[27:]
                 if not line:
                     continue
             # Fine del testo della pagina (nodo XML)
@@ -358,6 +371,9 @@ class AnnotatedWikiExtractor(object):
         wiki_document.annotations = annotations
 
         return wiki_document
+
+    def __is_redirect(self, wiki_document):
+        return wiki_document.text.lstrip().lower().startswith("#redirect")
 
     def __clean(self, wiki_document):
         # Rende maggiormente riconoscibili i tag
@@ -482,8 +498,8 @@ class AnnotatedWikiExtractor(object):
                 paragraph = [title]
 
             elif line[:9].lower() == "#redirect":
-                return None
-            # The following misses a lot; exclude:
+                wiki_document.text = line
+                return wiki_document
 
             # Elimina gli elenchi puntati e numerati
             # elif line[-1] == ':' or line[0] in '*#:;':
@@ -616,11 +632,15 @@ class OutputSplitter:
         self.__path_name = path_name
         self.__out_file, self.__current_filepath = self.__open_next_file()
         self.__index_file = io.open(os.path.join(path_name, "index.tsv"), "w", encoding="utf-8")
+        self.__redirects_file = io.open(os.path.join(path_name, "redirects.tsv"), "w", encoding="utf-8")
 
     #def write(self, (url, text)):
-    def write(self, x):
-        url = x[0]
-        text =x[1]
+    def write(self, data):
+        if "redirect" in data:
+            self.__redirects_file.write(f"{data['url']}\t{data['redirect']}\n")
+            return
+
+        text = data["json"]
         text_len = len(text)
         if self.__cur_file_size + text_len / 2 > self.__max_file_size:
             self.__close_cur_file()
@@ -629,7 +649,7 @@ class OutputSplitter:
             self.__cur_file_size = 0
         self.__out_file.write(str(text,'utf-8'))
         self.__cur_file_size += text_len
-        self.__add_to_index(url)
+        self.__add_to_index(data['url'])
         self.__line_number += 1
 
     def close(self):
