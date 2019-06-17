@@ -76,7 +76,7 @@ Options:
 ### SUPPORT CLASSES ###########################################################
 
 class AnnotatedWikiDocument(dict):
-    __slots__ = ['default', 'id', 'url', "title", 'text', 'annotations', 'categories']
+    __slots__ = ['default', 'id', 'url', "title", 'text', 'annotations', 'categories', 'disambiguation']
 
     def __init__(self, default=None, **kwargs):
         super(AnnotatedWikiDocument, self).__init__(**kwargs)
@@ -87,6 +87,8 @@ class AnnotatedWikiDocument(dict):
         self.text = None
         self.annotations = None
         self.categories = set()
+        self.disambiguation = False
+
 
     def __str__(self):
         self["id"] = self.id
@@ -95,6 +97,7 @@ class AnnotatedWikiDocument(dict):
         self["text"] = self.text
         self["annotations"] = self.annotations
         self["categories"] = self.categories
+        self["disambiguation"] = self.disambiguation
         return ujson.dumps(self) + "\n"
 
 
@@ -266,7 +269,6 @@ class AnnotatedWikiExtractor(object):
 
     # ------------------------------------------------------------------------------
 
-
     def process_page(self, page):
         wiki_document = self.extract_raw_document(page, quote=False)
         if wiki_document is None:
@@ -345,7 +347,10 @@ class AnnotatedWikiExtractor(object):
         return False
 
     def process_document(self, wiki_document):
+        wiki_document= self.__check_disambiguation(wiki_document)
+
         wiki_document = self.__clean(wiki_document)
+
         wiki_document = self.__compact(wiki_document)
 
         if wiki_document is None:
@@ -379,6 +384,11 @@ class AnnotatedWikiExtractor(object):
 
     def __is_redirect(self, wiki_document):
         return wiki_document.text.lstrip().lower().startswith("#redirect")
+
+    def __check_disambiguation(self, wiki_document):
+        if "(disambiguation)" in wiki_document.title.lower() or "{{disambiguation}}" in wiki_document.text.lower():
+            wiki_document.disambiguation = True
+        return wiki_document
 
     def __clean(self, wiki_document):
         # Rende maggiormente riconoscibili i tag
